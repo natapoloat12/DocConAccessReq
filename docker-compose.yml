@@ -1,0 +1,30 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: always
+    env_file:
+      - .env
+    # We removed the explicit 'environment' section with ${VAR} 
+    # to prevent empty overrides when shell variables are missing.
+    ports:
+      - "3000:3000"
+    networks:
+      - firewall_network
+
+  frontend:
+    image: nginx:alpine
+    ports:
+      - "8080:80"
+    volumes:
+      - ./frontend:/usr/share/nginx/html:ro
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - backend
+    networks:
+      - firewall_network
+
+networks:
+  firewall_network:
+    driver: bridge

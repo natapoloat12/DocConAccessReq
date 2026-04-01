@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login | Firewall Access Portal</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body class="bg-gray-100 min-h-screen flex items-center justify-center p-4">
+    
+    <div class="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden">
+        
+        <!-- Header -->
+        <div class="bg-gray-800 p-8 text-center text-white">
+            <div class="inline-flex bg-orange-500 p-4 rounded-2xl mb-4 shadow-lg shadow-orange-500/20">
+                <i class="fas fa-lock text-3xl"></i>
+            </div>
+            <h1 class="text-2xl font-bold tracking-tight">เข้าสู่ระบบ</h1>
+            <p class="text-gray-400 text-sm mt-1">KCE Firewall Access Request System</p>
+        </div>
+
+        <!-- Form -->
+        <form id="loginForm" class="p-8 space-y-6">
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-1">ชื่อผู้ใช้งาน (Username)</label>
+                    <div class="relative">
+                        <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-400">
+                            <i class="fas fa-user text-sm"></i>
+                        </span>
+                        <input type="text" id="username" required 
+                            placeholder="เช่น natapol.t"
+                            class="block w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-300 rounded-xl text-sm transition-all focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 focus:outline-none">
+                    </div>
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-1">รหัสผ่าน (Password)</label>
+                    <div class="relative">
+                        <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-400">
+                            <i class="fas fa-key text-sm"></i>
+                        </span>
+                        <input type="password" id="password" required
+                            placeholder="••••••••"
+                            class="block w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-300 rounded-xl text-sm transition-all focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 focus:outline-none">
+                    </div>
+                </div>
+            </div>
+
+            <button type="submit" id="loginBtn"
+                class="w-full bg-orange-500 text-white font-bold py-4 px-6 rounded-xl shadow-lg shadow-orange-500/30 hover:bg-orange-600 hover:shadow-orange-600/40 active:scale-[0.98] transition-all duration-200 flex items-center justify-center space-x-2">
+                <span>เข้าสู่ระบบ (Sign In)</span>
+                <i class="fas fa-arrow-right text-sm"></i>
+            </button>
+        </form>
+        
+        <!-- Status Message -->
+        <div id="statusMessage" class="mx-8 mb-8 p-4 rounded-xl text-sm text-center hidden border transition-all duration-300"></div>
+        
+        <!-- Footer -->
+        <div class="bg-gray-50 p-4 text-center border-t border-gray-100">
+            <p class="text-gray-400 text-[10px] uppercase tracking-widest font-bold">KCE Electronics Public Company Limited</p>
+        </div>
+    </div>
+
+    <script>
+        const loginForm = document.getElementById('loginForm');
+        const loginBtn = document.getElementById('loginBtn');
+        const statusMessage = document.getElementById('statusMessage');
+
+        loginForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+
+            loginBtn.disabled = true;
+            loginBtn.innerHTML = '<i class="fas fa-circle-notch animate-spin mr-2"></i> กำลังเข้าสู่ระบบ...';
+            statusMessage.classList.add('hidden');
+
+            try {
+                const response = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    statusMessage.innerHTML = '<i class="fas fa-check-circle mr-2"></i> สำเร็จ! กำลังนำคุณเข้าสู่ระบบ...';
+                    statusMessage.className = 'mx-8 mb-8 p-4 rounded-xl text-sm text-center bg-green-50 text-green-700 border-green-100';
+                    statusMessage.classList.remove('hidden');
+                    setTimeout(() => window.location.href = '/', 800);
+                } else {
+                    statusMessage.innerHTML = `<i class="fas fa-exclamation-circle mr-2"></i> ${data.message || 'การเข้าสู่ระบบล้มเหลว'}`;
+                    statusMessage.className = 'mx-8 mb-8 p-4 rounded-xl text-sm text-center bg-red-50 text-red-700 border-red-100';
+                    statusMessage.classList.remove('hidden');
+                }
+            } catch (err) {
+                statusMessage.innerHTML = '<i class="fas fa-wifi-slash mr-2"></i> ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้';
+                statusMessage.className = 'mx-8 mb-8 p-4 rounded-xl text-sm text-center bg-red-50 text-red-700 border-red-100';
+                statusMessage.classList.remove('hidden');
+            } finally {
+                loginBtn.disabled = false;
+                loginBtn.innerHTML = '<span>เข้าสู่ระบบ (Sign In)</span> <i class="fas fa-arrow-right text-sm ml-2"></i>';
+            }
+        });
+    </script>
+</body>
+</html>
