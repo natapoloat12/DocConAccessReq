@@ -6,17 +6,19 @@ services:
     restart: always
     env_file:
       - .env
-    # We removed the explicit 'environment' section with ${VAR} 
-    # to prevent empty overrides when shell variables are missing.
+    environment:
+      - PORT=5050
+    # No public port exposure for backend when using NPM
+    # But mapped to 127.0.0.1:5051 for internal testing if needed
     ports:
-      - "3000:3000"
+      - "127.0.0.1:5051:5050"
     networks:
       - firewall_network
 
   frontend:
     image: nginx:alpine
     ports:
-      - "8080:80"
+      - "5050:80"
     volumes:
       - ./frontend:/usr/share/nginx/html:ro
       - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro

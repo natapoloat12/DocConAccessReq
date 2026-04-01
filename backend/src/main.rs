@@ -48,7 +48,9 @@ async fn main() {
     let app = routes::create_router(state).layer(cors);
 
     // 6. Start Server
-    let addr = SocketAddr::from(([0, 0, 0, 0], 3000));
+    let port = env::var("PORT").unwrap_or_else(|_| "5050".to_string());
+    let addr: SocketAddr = format!("0.0.0.0:{}", port).parse().expect("Invalid PORT");
+    
     tracing::info!("Backend server starting on {}", addr);
     
     let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
