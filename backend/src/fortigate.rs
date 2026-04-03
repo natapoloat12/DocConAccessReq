@@ -296,14 +296,14 @@ impl FortiGateClient {
                     \
                     <p style='margin-top: 20px; font-size: 0.9em; color: #777;'>\
                         Note: Access will be automatically revoked at the expiry time.<br>\
-                        System: FortiGate Self-Service Portal\
+                        System: KCE Document Control Access Request\
                     </p>\
                 </body></html>",
                 doc_table_rows, table_rows
             );
 
             let email = builder_opt.take().unwrap()
-                .subject(format!("ขอแก้ไขไฟล์เอกสาร Document Control - {}", document_name.as_deref().unwrap_or("N/A")))
+                .subject("ขอแก้ไขไฟล์เอกสาร Document Control")
                 .header(lettre::message::header::ContentType::TEXT_HTML)
                 .body(email_html)
                 .unwrap();
