@@ -241,90 +241,69 @@ impl FortiGateClient {
                 ));
             }
 
-            // Document List Generation
-            let mut doc_list = String::new();
+            // Document Table Generation
+            let mut doc_table_rows = String::new();
             if let Some(docs) = &document_name {
                 let mut count = 1;
                 for doc in docs.split(',') {
                     let trimmed = doc.trim();
                     if !trimmed.is_empty() {
-                        doc_list.push_str(&format!("{}. {}<br>", count, escape_html(trimmed)));
+                        doc_table_rows.push_str(&format!(
+                            "<tr>\
+                                <td style='border: 1px solid #ddd; padding: 8px; text-align: center; width: 50px;'>{}</td>\
+                                <td style='border: 1px solid #ddd; padding: 8px;'>{}</td>\
+                            </tr>",
+                            count, escape_html(trimmed)
+                        ));
                         count += 1;
                     }
                 }
-            } else {
-                doc_list = "N/A".to_string();
+            }
+
+            if doc_table_rows.is_empty() {
+                doc_table_rows = "<tr><td colspan='2' style='border: 1px solid #ddd; padding: 8px; text-align: center;'>N/A</td></tr>".to_string();
             }
 
             let email_html = format!(
-                "<!DOCTYPE html><html>\
-                <head>\
-                    <meta charset='UTF-8'>\
-                    <style>\
-                        body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }}\
-                        .container {{ max-width: 650px; margin: 20px auto; border: 1px solid #e0e0e0; border-radius: 8px; overflow: hidden; }}\
-                        .header {{ background-color: #2d3748; color: #ffffff; padding: 25px; text-align: center; }}\
-                        .header h1 {{ margin: 0; font-size: 20px; letter-spacing: 1px; }}\
-                        .content {{ padding: 30px; }}\
-                        .section-title {{ font-weight: bold; color: #2d3748; border-bottom: 2px solid #edf2f7; padding-bottom: 8px; margin-bottom: 15px; text-transform: uppercase; font-size: 13px; }}\
-                        .info-box {{ background-color: #f7fafc; border-left: 4px solid #f6ad55; padding: 15px; margin-bottom: 25px; }}\
-                        .info-item {{ margin-bottom: 5px; font-size: 14px; }}\
-                        .info-label {{ font-weight: bold; width: 120px; display: inline-block; color: #4a5568; }}\
-                        table {{ width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 13px; }}\
-                        th {{ background-color: #edf2f7; color: #4a5568; border: 1px solid #e2e8f0; padding: 12px 8px; text-align: center; }}\
-                        td {{ border: 1px solid #e2e8f0; padding: 10px 8px; text-align: center; }}\
-                        .footer {{ background-color: #f7fafc; color: #718096; padding: 20px; font-size: 11px; text-align: center; border-top: 1px solid #e0e0e0; }}\
-                        .badge {{ display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: bold; text-transform: uppercase; margin-bottom: 10px; }}\
-                        .badge-info {{ background-color: #ebf8ff; color: #2b6cb0; }}\
-                    </style>\
-                </head>\
-                <body>\
-                    <div class='container'>\
-                        <div class='header'>\
-                            <h1>Document Access Request</h1>\
-                            <div style='font-size: 12px; opacity: 0.8; margin-top: 5px;'>Firewall Self-Service Portal</div>\
-                        </div>\
-                        <div class='content'>\
-                            <p style='margin-top: 0;'>เรียน ผู้ที่เกี่ยวข้อง / Dear All,</p>\
-                            <p>มีการส่งคำขออนุมัติเข้าใช้งานไฟล์เอกสารในระบบ Document Control โดยมีรายละเอียดดังนี้:</p>\
-                            \
-                            <div class='section-title'>Request Summary</div>\
-                            <div class='info-box'>\
-                                <div class='badge badge-info'>System Notification</div>\
-                                <div class='info-item'><span class='info-label'>เอกสาร / Docs:</span> {}</div>\
-                                <div class='info-item'><span class='info-label'>ผู้ขอ / Requested By:</span> {}</div>\
-                            </div>\
-                            \
-                            <div class='section-title'>Access Details</div>\
-                            <table>\
-                                <thead>\
-                                    <tr>\
-                                        <th>Name</th>\
-                                        <th>IP Address</th>\
-                                        <th>Start Time</th>\
-                                        <th>Expiry Time</th>\
-                                    </tr>\
-                                </thead>\
-                                <tbody>{}</tbody>\
-                            </table>\
-                            \
-                            <p style='margin-top: 25px; font-size: 13px;'>\
-                                <strong>Note:</strong> ระบบจะทำการยกเลิกสิทธิ์การเข้าถึงโดยอัตโนมัติเมื่อครบกำหนดเวลาที่ระบุข้างต้น<br>\
-                                <span style='color: #718096; font-style: italic;'>Access will be automatically revoked at the specified expiry time.</span>\
-                            </p>\
-                        </div>\
-                        <div class='footer'>\
-                            This is an automated message from the <strong>FortiGate Self-Service Portal</strong>.<br>\
-                            Please do not reply to this email. For any issues, contact the IT Department.\
-                        </div>\
-                    </div>\
-                </body>\
-                </html>",
-                doc_list, user_email, table_rows
+                "<!DOCTYPE html><html><head><meta charset='UTF-8'></head>\
+                <body style='font-family: sans-serif; line-height: 1.6; color: #333;'>\
+                    <p>เรียน ผู้ที่เกี่ยวข้อง</p>\
+                    <p>ขอแก้ไขไฟล์เอกสาร โดยมีรายละเอียดดังนี้:</p>\
+                    \
+                    <p><strong>1. ไฟล์เอกสารที่ต้องการแก้ไข:</strong></p>\
+                    <table style='width: 100%; border-collapse: collapse; margin-bottom: 20px;'>\
+                        <thead>\
+                            <tr style='background-color: #f2f2f2;'>\
+                                <th style='border: 1px solid #ddd; padding: 8px; text-align: center;'>No.</th>\
+                                <th style='border: 1px solid #ddd; padding: 8px; text-align: left;'>Document Name</th>\
+                            </tr>\
+                        </thead>\
+                        <tbody>{}</tbody>\
+                    </table>\
+                    \
+                    <p><strong>2. รายละเอียดผู้ขอเข้าใช้งาน:</strong></p>\
+                    <table style='width: 100%; border-collapse: collapse;'>\
+                        <thead>\
+                            <tr style='background-color: #f2f2f2;'>\
+                                <th style='border: 1px solid #ddd; padding: 8px;'>Name</th>\
+                                <th style='border: 1px solid #ddd; padding: 8px;'>IP Address</th>\
+                                <th style='border: 1px solid #ddd; padding: 8px;'>ระยะเวลาเริ่ม</th>\
+                                <th style='border: 1px solid #ddd; padding: 8px;'>ถึง</th>\
+                            </tr>\
+                        </thead>\
+                        <tbody>{}</tbody>\
+                    </table>\
+                    \
+                    <p style='margin-top: 20px; font-size: 0.9em; color: #777;'>\
+                        Note: Access will be automatically revoked at the expiry time.<br>\
+                        System: FortiGate Self-Service Portal\
+                    </p>\
+                </body></html>",
+                doc_table_rows, table_rows
             );
 
             let email = builder_opt.take().unwrap()
-                .subject(format!("Notification: Document Access Request - {}", document_name.as_deref().unwrap_or("N/A")))
+                .subject(format!("ขอแก้ไขไฟล์เอกสาร Document Control - {}", document_name.as_deref().unwrap_or("N/A")))
                 .header(lettre::message::header::ContentType::TEXT_HTML)
                 .body(email_html)
                 .unwrap();
