@@ -270,7 +270,7 @@ impl FortiGateClient {
                     <p>เรียน ผู้ที่เกี่ยวข้อง</p>\
                     <p>ขอแก้ไขไฟล์เอกสาร โดยมีรายละเอียดดังนี้:</p>\
                     \
-                    <p><strong>1. ไฟล์เอกสารที่ต้องการแก้ไข:</strong></p>\
+                    <p>ไฟล์เอกสารที่ต้องการแก้ไข:</p>\
                     <table style='width: 100%; border-collapse: collapse; margin-bottom: 20px;'>\
                         <thead>\
                             <tr style='background-color: #f2f2f2;'>\
@@ -281,7 +281,7 @@ impl FortiGateClient {
                         <tbody>{}</tbody>\
                     </table>\
                     \
-                    <p><strong>2. รายละเอียดผู้ขอเข้าใช้งาน:</strong></p>\
+                    <p>รายละเอียดผู้ขอเข้าใช้งาน:</p>\
                     <table style='width: 100%; border-collapse: collapse;'>\
                         <thead>\
                             <tr style='background-color: #f2f2f2;'>\
