@@ -29,8 +29,9 @@ graph LR
 ### A. Frontend (Presentation Layer)
 - **Technology:** Vanilla HTML5, JavaScript (ES6+), Tailwind CSS (CDN).
 - **Responsibility:** 
-    - Collecting user input (IPs, Document Name, Expiry).
-    - Client-side validation (Regex for IPs).
+    - Collecting user input (Multiple IPs/Names, Document Name, Expiry).
+    - Collecting additional CC email recipients.
+    - Client-side validation (Regex for IPs and Emails).
     - Managing session state via JWT cookies.
 - **Communication:** Communicates exclusively with the Nginx proxy via the `/api` prefix.
 
@@ -38,8 +39,9 @@ graph LR
 - **Framework:** [Axum](https://github.com/tokio-rs/axum) (Rust) running on the [Tokio](https://tokio.rs/) runtime.
 - **Core Modules:**
     - `auth.rs`: Handles LDAP binding and JWT generation.
-    - `fortigate.rs`: The "Orchestrator" that translates business logic into FortiGate API calls.
-    - `handlers.rs`: Manages HTTP request/response cycles and input validation.
+    - `fortigate.rs`: The "Orchestrator" that translates business logic into FortiGate API calls and manages multi-recipient email notifications.
+    - `handlers.rs`: Manages HTTP request/response cycles, input validation, and legacy field compatibility.
+    - `models.rs`: Defines data structures for firewall requests, including support for multiple IP entries and CC email lists.
     - `middleware.rs`: Intercepts every request to verify the JWT in the cookie.
 
 ### C. Infrastructure (Deployment Layer)
@@ -60,7 +62,11 @@ When a user submits a request, the following sequence occurs:
     - **Step 3 (Policy):** It looks for a policy named `T2S-Doc-[Date]`. 
         - If it exists, it **appends** the new IP to the `srcaddr` list.
         - If not, it creates a **new policy** and uses `move` to place it before **Rule ID 285** (ensuring it bypasses the "Block All" rule).
-4.  **Notification:** Once the firewall confirms success, the backend sends an email via SMTP.
+4.  **Notification:** Once the firewall confirms success, the backend sends a multi-recipient email via SMTP:
+    - **Sender:** Uses the `SMTP_FROM` address.
+    - **To Recipients:** Combines the requester's email (from the session) and the administrative list in `SMTP_TO`.
+    - **CC Recipients:** Combines the global `SMTP_CC` list and any additional emails provided by the user in the "CC To" field.
+    - **Cleaning:** The system automatically deduplicates all email addresses and ensures that recipients in the "To" list are not repeated in the "CC" list.
 
 ---
 
@@ -96,3 +102,6 @@ The architecture is controlled by the `.env` file:
 - `COOKIE_SECURE`: Toggle for HTTP vs HTTPS environments.
 - `PORT`: The internal binding port (5050).
 - `JWT_SECRET`: The key used to sign session tokens.
+- `SMTP_FROM`: The official sender email address.
+- `SMTP_TO`: Global administrative recipients (comma-separated).
+- `SMTP_CC`: Global CC recipients for all notifications (comma-separated).
