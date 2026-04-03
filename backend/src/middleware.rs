@@ -5,7 +5,6 @@ use axum::{
     http::StatusCode,
 };
 use axum_extra::extract::cookie::CookieJar;
-use tracing::{warn};
 use crate::auth::{AUTH_COOKIE_NAME, validate_jwt};
 
 pub async fn auth_middleware(

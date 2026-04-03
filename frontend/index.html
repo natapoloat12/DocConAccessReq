@@ -37,7 +37,7 @@
                 </div>
                 <div>
                     <h1 class="text-xl md:text-2xl font-bold tracking-tight">ระบบขออนุมัติเข้าใช้งานไฟล์เอกสาร</h1>
-                    <p class="text-gray-400 text-sm md:text-base">Document Control Access Portal</p>
+                    <p class="text-gray-400 text-sm md:text-base">Document Control Access Request Portal</p>
                 </div>
             </div>
         </div>
@@ -96,12 +96,14 @@
                 <div class="space-y-4">
                     <div class="flex items-center space-x-2 text-gray-800 border-b border-gray-100 pb-2">
                         <i class="fas fa-envelope text-orange-500"></i>
-                        <h2 class="font-bold uppercase text-sm tracking-wider">อีเมลยืนยัน</h2>
+                        <h2 class="font-bold uppercase text-sm tracking-wider">อีเมลสำเนา (CC)</h2>
                     </div>
                     <div>
-                        <label for="email" class="block text-sm font-semibold text-gray-700 mb-1">อีเมลผู้ขอ (Read-only)</label>
-                        <input type="email" id="email" name="email" readonly
-                            class="block w-full px-4 py-3 bg-gray-100 border border-gray-200 rounded-xl text-sm text-gray-500 cursor-not-allowed">
+                        <label for="cc_emails" class="block text-sm font-semibold text-gray-700 mb-1">CC To</label>
+                        <input type="text" id="cc_emails" name="cc_emails" 
+                            placeholder="เช่น manager1@kce.co.th, manager2@kce.co.th"
+                            class="block w-full px-4 py-3 bg-gray-50 border border-gray-300 rounded-xl text-sm transition-all focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 focus:outline-none">
+                        <p class="text-gray-400 text-[10px] mt-1 italic">ระบุอีเมลหัวหน้าส่วนงาน คั่นด้วยเครื่องหมายจุลภาค (,)</p>
                     </div>
                 </div>
             </div>

@@ -3,11 +3,13 @@ const submitBtn = document.getElementById('submitBtn');
 const statusMessage = document.getElementById('statusMessage');
 const statusIcon = document.getElementById('statusIcon');
 const statusText = document.getElementById('statusText');
-const emailInput = document.getElementById('email');
+const ccEmailsInput = document.getElementById('cc_emails');
 const loadingScreen = document.getElementById('loadingScreen');
 const mainContainer = document.getElementById('mainContainer');
 const entriesContainer = document.getElementById('entriesContainer');
 const addEntryBtn = document.getElementById('addEntryBtn');
+
+let userEmail = '';
 
 // Simple regex patterns
 const ipRegex = /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
@@ -114,8 +116,8 @@ async function checkAuth() {
         if (mainContainer) {
             mainContainer.style.display = 'block';
         }
-        if (user.email && emailInput) {
-            emailInput.value = user.email;
+        if (user.email) {
+            userEmail = user.email;
         }
     } catch (err) {
         console.error('Connection error:', err);
@@ -129,9 +131,23 @@ form.addEventListener('submit', async (e) => {
     
     const documentNameInput = document.getElementById('document_name');
     const document_name = documentNameInput ? documentNameInput.value.trim() : '';
-    const email = emailInput.value.trim();
+    const ccEmailsValue = ccEmailsInput.value.trim();
     const dateVal = document.getElementById('expiry').value;
     const expiry = dateVal ? `${dateVal}T23:59` : '';
+
+    // Parse and validate CC emails
+    let cc_emails = [];
+    if (ccEmailsValue) {
+        cc_emails = ccEmailsValue.split(',').map(email => email.trim()).filter(email => email !== "");
+        for (const email of cc_emails) {
+            if (!validateEmail(email)) {
+                showStatus(`รูปแบบอีเมลไม่ถูกต้อง: ${email}`, true);
+                ccEmailsInput.classList.add('border-red-500');
+                return;
+            }
+        }
+    }
+    ccEmailsInput.classList.remove('border-red-500');
 
     const entries = [];
     const rows = document.querySelectorAll('.entry-row');
@@ -179,7 +195,13 @@ form.addEventListener('submit', async (e) => {
         const response = await fetch('/api/firewall/request', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ entries, email: email || null, expiry, document_name }),
+            body: JSON.stringify({ 
+                entries, 
+                confirmation_email: userEmail || null, 
+                cc_emails,
+                expiry, 
+                document_name 
+            }),
         });
 
         if (response.status === 401) {

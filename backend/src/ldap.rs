@@ -20,7 +20,7 @@ fn sanitize_ldap_input(input: &str) -> String {
 
 pub async fn authenticate_with_ldap(username: &str, password: &str) -> Result<LdapAuthResult, String> {
     let ldap_url = env::var("LDAP_URL").map_err(|_| "LDAP_URL not set")?;
-    let ldap_domain = env::var("LDAP_DOMAIN").unwrap_or_else(|_| "kce.co.th".to_string());
+    let _ldap_domain = env::var("LDAP_DOMAIN").unwrap_or_else(|_| "kce.co.th".to_string());
     
     // 1. Clean the username: if user typed "KCE\user", just take "user"
     let clean_username = if let Some(pos) = username.find('\\') {

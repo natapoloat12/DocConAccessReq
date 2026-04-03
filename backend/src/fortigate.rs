@@ -15,12 +15,21 @@ pub struct FortiGateClient {
     client: Client,
 }
 
+use std::collections::HashSet;
+
 fn escape_html(input: &str) -> String {
     input.replace('&', "&amp;")
          .replace('<', "&lt;")
          .replace('>', "&gt;")
          .replace('"', "&quot;")
          .replace('\'', "&#39;")
+}
+
+fn parse_email_list(input: &str) -> Vec<String> {
+    input.split(',')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect()
 }
 
 impl FortiGateClient {
@@ -47,6 +56,7 @@ impl FortiGateClient {
         entries: &[crate::models::FirewallEntry], 
         expiry: &str, 
         user_email: &str, 
+        cc_emails: Option<Vec<String>>,
         document_name: Option<String>
     ) -> Result<(), String> {
         let expiry_dt = DateTime::parse_from_rfc3339(&format!("{}:00Z", expiry))
@@ -55,53 +65,80 @@ impl FortiGateClient {
         
         let date_str = expiry_utc.format("%Y%m%d").to_string();
         let schedule_name = date_str.clone();
-        let policy_name = format!("T2S-Doc-{}", date_str);
         
-        info!("Processing multi-entry request for Policy: {}, Entries: {}, Doc: {:?}", policy_name, entries.len(), document_name);
+        info!("Processing multi-entry request for date: {}, Entries: {}, Doc: {:?}", date_str, entries.len(), document_name);
 
-        let mut addr_names = Vec::new();
+        let mut engineer_addrs = Vec::new();
+        let mut default_addrs = Vec::new();
+
         for entry in entries {
-            let addr_name = self.ensure_address_object_v2(&entry.name, &entry.ip).await?;
-            addr_names.push(addr_name);
+            match self.ensure_address_object_v2(&entry.name, &entry.ip).await {
+                Ok(addr_name) => {
+                    if entry.ip.starts_with("10.10.112.") {
+                        engineer_addrs.push(addr_name);
+                    } else {
+                        default_addrs.push(addr_name);
+                    }
+                }
+                Err(e) => {
+                    error!("Skipping IP {}: {}", entry.ip, e);
+                }
+            }
+        }
+
+        if engineer_addrs.is_empty() && default_addrs.is_empty() && !entries.is_empty() {
+            return Err("Failed to create address objects for any of the provided IPs".to_string());
         }
 
         self.ensure_schedule(&schedule_name, expiry_utc.timestamp()).await?;
-        let existing_policy = self.find_policy_by_name(&policy_name).await?;
 
-        if let Some(policy) = existing_policy {
-            let policy_id = policy["policyid"].as_i64().ok_or("Missing policyid")?;
-            let mut srcaddr = policy["srcaddr"].as_array().cloned().unwrap_or_default();
-            
-            let mut updated = false;
-            for addr_name in addr_names {
-                if !srcaddr.iter().any(|a| a["name"] == addr_name) {
-                    srcaddr.push(json!({"name": addr_name}));
-                    updated = true;
-                }
-            }
-
-            if updated {
-                self.update_policy_srcaddr(policy_id, srcaddr).await?;
-                info!("Updated existing policy {} with new addresses", policy_name);
-            } else {
-                info!("All addresses already exist in policy {}", policy_name);
-            }
-        } else {
-            // Create new policy with the first address
-            let first_addr = &addr_names[0];
-            let new_policy_id = self.create_new_policy(&policy_name, &schedule_name, first_addr).await?;
-            
-            // If there are more addresses, update the policy
-            if addr_names.len() > 1 {
-                let srcaddr: Vec<Value> = addr_names.iter().map(|name| json!({"name": name})).collect();
-                self.update_policy_srcaddr(new_policy_id, srcaddr).await?;
-            }
-
-            info!("Created new policy {} (ID: {})", policy_name, new_policy_id);
-            self.move_policy(new_policy_id, 285).await?;
+        let mut groups = Vec::new();
+        if !engineer_addrs.is_empty() {
+            groups.push((format!("E2S-Doc-{}", date_str), "Engineer_Zone", 261, engineer_addrs));
+        }
+        if !default_addrs.is_empty() {
+            groups.push((format!("T2S-Doc-{}", date_str), "Trust_Zone", 285, default_addrs));
         }
 
-        self.send_notification_v2(entries, user_email, &expiry_utc, document_name).await;
+        for (policy_name, src_intf, move_before, addr_names) in groups {
+            let existing_policy = self.find_policy_by_name(&policy_name).await?;
+            let is_engineer = src_intf == "Engineer_Zone";
+
+            if let Some(policy) = existing_policy {
+                let policy_id = policy["policyid"].as_i64().ok_or("Missing policyid")?;
+                let mut srcaddr = policy["srcaddr"].as_array().cloned().unwrap_or_default();
+                
+                let mut updated = false;
+                for addr_name in addr_names {
+                    if !srcaddr.iter().any(|a| a["name"] == addr_name) {
+                        srcaddr.push(json!({"name": addr_name}));
+                        updated = true;
+                    }
+                }
+
+                if updated {
+                    self.update_policy_srcaddr(policy_id, srcaddr, is_engineer).await?;
+                    info!("Updated existing policy {} with new addresses", policy_name);
+                } else {
+                    info!("All addresses already exist in policy {}", policy_name);
+                }
+            } else {
+                // Create new policy with the first address
+                let first_addr = &addr_names[0];
+                let new_policy_id = self.create_new_policy(&policy_name, &schedule_name, first_addr, src_intf).await?;
+                
+                // If there are more addresses, update the policy
+                if addr_names.len() > 1 {
+                    let srcaddr: Vec<Value> = addr_names.iter().map(|name| json!({"name": name})).collect();
+                    self.update_policy_srcaddr(new_policy_id, srcaddr, is_engineer).await?;
+                }
+
+                info!("Created new policy {} (ID: {}) in zone {}", policy_name, new_policy_id, src_intf);
+                self.move_policy(new_policy_id, move_before).await?;
+            }
+        }
+
+        self.send_notification_v2(entries, user_email, cc_emails, &expiry_utc, document_name).await;
         Ok(())
     }
 
@@ -110,13 +147,14 @@ impl FortiGateClient {
             name: request.name.clone().unwrap_or_else(|| format!("ADDR_{}", request.ip.as_ref().unwrap().replace('.', "_"))),
             ip: request.ip.clone().unwrap(),
         };
-        self.create_request_v2(&[entry], &request.expiry, user_email, request.document_name.clone()).await
+        self.create_request_v2(&[entry], &request.expiry, user_email, request.cc_emails.clone(), request.document_name.clone()).await
     }
 
     async fn send_notification_v2(
         &self, 
         entries: &[crate::models::FirewallEntry], 
-        user_email: &str, 
+        user_email: &str, // This is confirmation_email from request
+        cc_emails: Option<Vec<String>>,
         expiry: &DateTime<Utc>, 
         document_name: Option<String>
     ) {
@@ -124,46 +162,64 @@ impl FortiGateClient {
         let smtp_port = env::var("SMTP_PORT").ok().and_then(|p| p.parse::<u16>().ok());
         let smtp_user = env::var("SMTP_USER").ok();
         let smtp_pass = env::var("SMTP_PASS").ok();
-        let smtp_cc = env::var("SMTP_CC").ok();
+        let smtp_from = env::var("SMTP_FROM").ok();
         let smtp_to = env::var("SMTP_TO").ok();
+        let smtp_cc = env::var("SMTP_CC").ok();
 
-        info!("Email notification: From={} (User), To={:?}, CC={:?}, Host={:?}", user_email, smtp_to, smtp_cc, smtp_host);
-
-        if let (Some(host), Some(port), Some(user), Some(pass)) = 
-               (smtp_host, smtp_port, smtp_user, smtp_pass) {
+        if let (Some(host), Some(port), Some(user), Some(pass), Some(from_email)) = 
+               (smtp_host, smtp_port, smtp_user, smtp_pass, smtp_from) {
             
-            // 1. From: The Requester (Confirmation Email)
-            let mut builder = Message::builder()
-                .from(user_email.parse().expect("Invalid User Email as From"));
+            // 1. Sender (FROM)
+            let mut builder_opt = Some(Message::builder()
+                .from(from_email.parse().expect("Invalid SMTP_FROM as From")));
 
-            // 2. To: Main Admin (SMTP_TO)
+            // 2. Receivers (TO): confirmation_email + SMTP_TO
+            let mut to_set = HashSet::new();
+            to_set.insert(user_email.to_string());
             if let Some(admin_to) = smtp_to {
-                let trimmed = admin_to.trim();
-                if !trimmed.is_empty() {
-                    builder = builder.to(trimmed.parse().expect("Invalid SMTP_TO as To"));
+                for email in parse_email_list(&admin_to) {
+                    to_set.insert(email);
                 }
             }
-            
-            // 3. CC: Additional List (SMTP_CC) only
-            if let Some(cc_list) = smtp_cc {
-                info!("Found SMTP_CC list: {}", cc_list);
-                let mut cc_count = 0;
-                for email_addr in cc_list.split(',') {
-                    let trimmed = email_addr.trim();
+
+            for email in &to_set {
+                match email.parse() {
+                    Ok(mailbox) => { 
+                        builder_opt = Some(builder_opt.take().unwrap().to(mailbox)); 
+                    }
+                    Err(e) => error!("Invalid TO email '{}': {}", email, e),
+                }
+            }
+
+            // 3. CC Receivers: SMTP_CC + request.cc_emails
+            let mut cc_set = HashSet::new();
+            if let Some(env_cc) = smtp_cc {
+                for email in parse_email_list(&env_cc) {
+                    cc_set.insert(email);
+                }
+            }
+            if let Some(req_cc) = cc_emails {
+                for email in req_cc {
+                    let trimmed = email.trim();
                     if !trimmed.is_empty() {
-                        match trimmed.parse() {
-                            Ok(mailbox) => { 
-                                builder = builder.cc(mailbox); 
-                                cc_count += 1;
-                            },
-                            Err(e) => error!("Invalid SMTP_CC email '{}': {}", trimmed, e),
-                        }
+                        cc_set.insert(trimmed.to_string());
                     }
                 }
-                info!("Added {} recipients to CC", cc_count);
-            } else {
-                warn!("SMTP_CC environment variable is NOT set or empty");
             }
+
+            // Deduplicate CC from TO
+            for email in &cc_set {
+                if !to_set.contains(email) {
+                    match email.parse() {
+                        Ok(mailbox) => { 
+                            builder_opt = Some(builder_opt.take().unwrap().cc(mailbox)); 
+                        }
+                        Err(e) => error!("Invalid CC email '{}': {}", email, e),
+                    }
+                }
+            }
+
+            info!("Email notification: From={}, To={:?}, CC count={}, Host={:?}", from_email, to_set, cc_set.len(), host);
 
             // HTML Table Generation
             let mut table_rows = String::new();
@@ -206,7 +262,7 @@ impl FortiGateClient {
                     <p>เรียน ผู้ที่เกี่ยวข้อง</p>\
                     <p>ขอแก้ไขไฟล์เอกสาร</p>\
                     <p><strong>ไฟล์เอกสารที่ต้องการแก้ไข:</strong><br>{}</p>\
-                    <p><strong>รายละเอียดการเข้าใช้งาน:</strong></p>\
+                    <p><strong>รายละเอียดผู้ขอเข้าใช้งาน:</strong></p>\
                     <table style='width: 100%; border-collapse: collapse; margin-top: 10px;'>\
                         <thead>\
                             <tr style='background-color: #f2f2f2;'>\
@@ -226,7 +282,7 @@ impl FortiGateClient {
                 doc_list, table_rows
             );
 
-            let email = builder
+            let email = builder_opt.take().unwrap()
                 .subject("ขอแก้ไขไฟล์เอกสาร Document Control")
                 .header(lettre::message::header::ContentType::TEXT_HTML)
                 .body(email_html)
@@ -252,8 +308,8 @@ impl FortiGateClient {
             };
 
             match mailer.send(email).await {
-                Ok(_) => info!("Email successfully queued for delivery to {}", user_email),
-                Err(e) => error!("SMTP Error for {}: {:?}", user_email, e),
+                Ok(_) => info!("Email successfully queued for delivery to {:?}", to_set),
+                Err(e) => error!("SMTP Error for {:?}: {:?}", to_set, e),
             }
         } else {
             warn!("SMTP configuration incomplete; cannot send email.");
@@ -265,7 +321,7 @@ impl FortiGateClient {
             name: "n/a".to_string(),
             ip: ip.to_string(),
         };
-        self.send_notification_v2(&[entry], user_email, expiry, None).await;
+        self.send_notification_v2(&[entry], user_email, None, expiry, None).await;
     }
 
     async fn ensure_address_object_v2(&self, name: &str, ip: &str) -> Result<String, String> {
@@ -310,7 +366,8 @@ impl FortiGateClient {
             "name": name,
             "type": "ipmask",
             "subnet": format!("{}/32", ip),
-            "comment": "Created via Self-Service Portal"
+            "comment": "Created via Self-Service Portal",
+            "color" : "18"
         });
 
         let response = self.client.post(&create_url)
@@ -389,12 +446,12 @@ impl FortiGateClient {
         Ok(None)
     }
 
-    async fn create_new_policy(&self, name: &str, schedule: &str, addr_name: &str) -> Result<i64, String> {
+    async fn create_new_policy(&self, name: &str, schedule: &str, addr_name: &str, src_intf: &str) -> Result<i64, String> {
         let url = format!("{}/api/v2/cmdb/firewall/policy", self.base_url);
-        let payload = json!({
+        let mut payload = json!({
             "name": name,
             "action": "accept",
-            "srcintf": [{"name": "Trust_Zone"}],
+            "srcintf": [{"name": src_intf}],
             "dstintf": [{"name": "Server_Zone"}],
             "srcaddr": [{"name": addr_name}],
             "dstaddr": [{"name": "S-Document_108"}],
@@ -404,6 +461,13 @@ impl FortiGateClient {
             "status": "enable",
             "logtraffic": "all"
         });
+
+        if src_intf == "Engineer_Zone" {
+            if let Some(obj) = payload.as_object_mut() {
+                obj.insert("file-filter-profile".to_string(), json!("KCE-FileMonitor"));
+                obj.insert("utm-status".to_string(), json!("enable"));
+            }
+        }
 
         let response = self.client.post(&url)
             .bearer_auth(&self.api_token)
@@ -416,9 +480,16 @@ impl FortiGateClient {
         json["mkey"].as_i64().ok_or_else(|| format!("Failed to get new policy ID: {:?}", json))
     }
 
-    async fn update_policy_srcaddr(&self, policy_id: i64, srcaddr: Vec<Value>) -> Result<(), String> {
+    async fn update_policy_srcaddr(&self, policy_id: i64, srcaddr: Vec<Value>, is_engineer: bool) -> Result<(), String> {
         let url = format!("{}/api/v2/cmdb/firewall/policy/{}", self.base_url, policy_id);
-        let payload = json!({ "srcaddr": srcaddr });
+        let mut payload = json!({ "srcaddr": srcaddr });
+
+        if is_engineer {
+            if let Some(obj) = payload.as_object_mut() {
+                obj.insert("file-filter-profile".to_string(), json!("KCE-FileMonitor"));
+                obj.insert("utm-status".to_string(), json!("enable"));
+            }
+        }
 
         let response = self.client.put(&url)
             .bearer_auth(&self.api_token)

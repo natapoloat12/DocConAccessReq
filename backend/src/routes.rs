@@ -2,7 +2,6 @@ use axum::{
     routing::{post, get},
     Router,
     middleware,
-    extract::State,
 };
 use crate::handlers::handle_firewall_request;
 use crate::auth::{login_handler, logout_handler, verify_handler, LoginRateLimiter};

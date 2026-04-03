@@ -11,7 +11,12 @@ pub struct FirewallRequest {
     pub entries: Option<Vec<FirewallEntry>>, // New multiple entries format
     
     #[validate(email)]
-    pub email: Option<String>,
+    pub email: Option<String>, // Legacy
+
+    #[validate(email)]
+    pub confirmation_email: Option<String>, // New: Primary receiver
+    
+    pub cc_emails: Option<Vec<String>>, // New: CC receivers
     
     pub expiry: String, 
 

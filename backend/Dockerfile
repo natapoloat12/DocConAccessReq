@@ -1,4 +1,4 @@
-FROM rustlang/rust:nightly-slim as builder
+FROM rustlang/rust:nightly-slim AS builder
 
 WORKDIR /usr/src/app
 COPY . .

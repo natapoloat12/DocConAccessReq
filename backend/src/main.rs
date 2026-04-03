@@ -32,17 +32,20 @@ async fn main() {
         limiter: Arc::new(LoginRateLimiter::new()),
     };
 
-    // 4. CORS
-    let allowed_origin = env::var("ALLOWED_ORIGIN")
-        .unwrap_or_else(|_| "http://localhost:8080".to_string())
-        .parse::<axum::http::HeaderValue>()
-        .unwrap();
-
-    let cors = CorsLayer::new()
-        .allow_origin(allowed_origin)
+    // 4. CORS - Flexible Origin Loading
+    let allowed_origins_str = env::var("ALLOWED_ORIGIN")
+        .unwrap_or_else(|_| "http://localhost:8080".to_string());
+    
+    let mut cors = CorsLayer::new()
         .allow_methods([axum::http::Method::GET, axum::http::Method::POST])
         .allow_headers([axum::http::header::CONTENT_TYPE])
         .allow_credentials(true);
+
+    for origin in allowed_origins_str.split(',') {
+        if let Ok(value) = origin.trim().parse::<axum::http::HeaderValue>() {
+            cors = cors.allow_origin(value);
+        }
+    }
 
     // 5. Build Router
     let app = routes::create_router(state).layer(cors);

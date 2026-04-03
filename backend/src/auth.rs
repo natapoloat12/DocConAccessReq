@@ -8,7 +8,7 @@ use axum_extra::extract::cookie::{Cookie, CookieJar, SameSite};
 use jsonwebtoken::{encode, EncodingKey, DecodingKey, Validation, decode, Header};
 use serde::{Deserialize, Serialize};
 use std::env;
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 use std::collections::HashMap;
 use chrono::{Utc, Duration};
 use tracing::{info, warn, error};

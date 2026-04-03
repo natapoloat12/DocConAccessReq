@@ -5,11 +5,9 @@ use axum::{
     Extension,
 };
 use crate::models::{FirewallRequest, FirewallResponse};
-use crate::fortigate::FortiGateClient;
 use crate::auth::Claims;
 use validator::Validate;
-use std::sync::Arc;
-use tracing::{info, error, warn};
+use tracing::{info, error};
 
 pub async fn handle_firewall_request(
     State(state): State<crate::routes::AppState>,
@@ -20,19 +18,24 @@ pub async fn handle_firewall_request(
     info!("Received firewall request from user: {} ({:?})", claims.sub, claims.email);
 
     // 1. Email Handling
-    if payload.email.is_none() {
-        if let Some(user_email) = claims.email {
-            payload.email = Some(user_email);
+    if payload.confirmation_email.is_none() {
+        if let Some(user_email) = payload.email.take() {
+            payload.confirmation_email = Some(user_email);
+        } else if let Some(user_email) = claims.email {
+            payload.confirmation_email = Some(user_email);
         } else {
             return (
                 StatusCode::BAD_REQUEST,
                 Json(FirewallResponse {
                     status: "error".to_string(),
-                    message: "Email address is required but was not found in profile or request.".to_string(),
+                    message: "Confirmation email is required but was not found in profile or request.".to_string(),
                 }),
             ).into_response();
         }
     }
+
+    let final_email = payload.confirmation_email.clone().unwrap();
+    let cc_emails = payload.cc_emails.take();
 
     // 2. Backward Compatibility & Normalize Entries
     let mut normalized_entries = Vec::new();
@@ -103,13 +106,12 @@ pub async fn handle_firewall_request(
         ).into_response();
     }
 
-    let final_email = payload.email.clone().unwrap();
-
     // 4. Call FortiGate API
     match client.create_request_v2(
         &normalized_entries, 
         &payload.expiry, 
         &final_email, 
+        cc_emails,
         payload.document_name
     ).await {
         Ok(_) => {
