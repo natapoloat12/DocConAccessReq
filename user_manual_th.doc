@@ -1,0 +1,93 @@
+<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+<head>
+    <meta charset="UTF-8">
+    <title>User Manual - Firewall Access Portal</title>
+    <style>
+        body { font-family: 'Sarabun', 'TH Sarabun New', 'Arial', sans-serif; line-height: 1.5; color: #333; }
+        h1 { color: #f97316; font-size: 26pt; border-bottom: 3px solid #f97316; padding-bottom: 10px; margin-bottom: 20pt; }
+        h2 { color: #1f2937; font-size: 18pt; margin-top: 25pt; border-left: 5px solid #1f2937; padding-left: 10pt; }
+        h3 { color: #374151; font-size: 14pt; font-weight: bold; margin-top: 15pt; }
+        p { font-size: 12pt; margin-bottom: 10pt; }
+        .highlight { background-color: #f3f4f6; padding: 5pt; border-radius: 4pt; font-family: monospace; }
+        .tech-box { border: 1px solid #e5e7eb; padding: 10pt; background-color: #fafafa; margin-bottom: 10pt; }
+        table { border-collapse: collapse; width: 100%; margin-top: 20pt; }
+        th, td { border: 1px solid #d1d5db; padding: 10px; text-align: left; font-size: 11pt; }
+        th { background-color: #1f2937; color: white; }
+        .footer { font-size: 9pt; color: #9ca3af; margin-top: 50pt; border-top: 1px solid #e5e7eb; padding-top: 10px; text-align: center; }
+    </style>
+</head>
+<body>
+    <div style="max-width: 800px; margin: auto;">
+        <h1>คู่มือการใช้งาน (User Manual)</h1>
+        <p style="font-size: 14pt; color: #6b7280; font-weight: bold;">KCE Firewall Access Request System</p>
+
+        <h2>1. ภาพรวมระบบ (Overview)</h2>
+        <p>ระบบนี้เป็นช่องทางบริการตนเอง (Self-Service) เพื่อขอสิทธิ์เข้าใช้งานไฟล์วอลล์ชั่วคราว (เช่น RDP) บนอุปกรณ์ <strong>FortiGate</strong> โดยระบบจะทำการสร้างนโยบายความปลอดภัยและกำหนดวันหมดอายุให้โดยอัตโนมัติ เพื่อลดขั้นตอนการส่ง Ticket แบบปกติ</p>
+
+        <h2>2. การเข้าสู่ระบบ (Authentication)</h2>
+        <p>ระบบใช้บัญชี <strong>Corporate LDAP</strong> ในการตรวจสอบสิทธิ์:</p>
+        <ol>
+            <li>กรอก <strong>Username</strong> (เช่น <span class="highlight">natapol.t</span>) และรหัสผ่านเดียวกับคอมพิวเตอร์บริษัท</li>
+            <li>หากสำเร็จ ระบบจะจัดเก็บ Session Token ไว้ในบราวเซอร์</li>
+            <li>*กรณีเข้าสู่ระบบไม่ได้: ตรวจสอบว่าบราวเซอร์เปิดใช้งาน Cookie หรือไม่</li>
+        </ol>
+
+        <h2>3. ขั้นตอนการขอสิทธิ์ (How to Request)</h2>
+        <div class="tech-box">
+            <h3>ส่วนที่ 1: ข้อมูลเอกสาร</h3>
+            <p>ระบุชื่อเอกสารหรือโปรเจกต์ (Document Name) เพื่อใช้ในการอ้างอิงบนไฟล์วอลล์</p>
+        </div>
+        <div class="tech-box">
+            <h3>ส่วนที่ 2: รายละเอียดผู้ใช้งาน (IP Address)</h3>
+            <p>กรอกชื่อและหมายเลข IP (เช่น <span class="highlight">10.10.x.x</span>) สามารถคลิกปุ่ม <strong>"+ เพิ่ม"</strong> เพื่อขอสิทธิ์ให้หลายคนพร้อมกันได้</p>
+        </div>
+        <div class="tech-box">
+            <h3>ส่วนที่ 3: กำหนดเวลา (Expiry)</h3>
+            <p>เลือกวันสุดท้ายที่ต้องการใช้งาน ระบบจะยกเลิกสิทธิ์อัตโนมัติในเวลา <strong>23:59 น.</strong> ของวันนั้น</p>
+        </div>
+
+        <h2>4. การทำงานของระบบ (Behind the Scenes)</h2>
+        <p><strong>Address Object:</strong> ระบบสร้างวัตถุ IP ในชื่อ <span class="highlight">ADDR_[IP]</span> ให้อัตโนมัติ</p>
+        <p><strong>Policy Merging:</strong> หากขอสิทธิ์วันเดียวกัน ระบบจะรวมไว้ใน Policy เดียวกันเพื่อความเป็นระเบียบ</p>
+        <p><strong>Rule Precedence:</strong> นโยบายใหม่จะถูกย้ายไปอยู่ก่อนหน้า <strong>Rule ID 285</strong> (Block Rule) เสมอ</p>
+        <p><strong>Notifications:</strong> ส่งอีเมลยืนยันผลการดำเนินการผ่าน SMTP ทันทีที่ตั้งค่าสำเร็จ</p>
+
+        <h2>5. การแก้ปัญหาเบื้องต้น (Troubleshooting)</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>ปัญหา (Problem)</th>
+                    <th>สาเหตุ (Cause)</th>
+                    <th>วิธีแก้ไข (Solution)</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><strong>หน้าจอวนลูป Login</strong></td>
+                    <td>Cookie/SSL Policy</td>
+                    <td>เข้าใช้งานผ่าน HTTPS หรือตั้งค่า <span class="highlight">COOKIE_SECURE=false</span></td>
+                </tr>
+                <tr>
+                    <td><strong>IP Address ไม่ถูกต้อง</strong></td>
+                    <td>Format Error</td>
+                    <td>กรอกในรูปแบบ X.X.X.X (เช่น 10.0.0.1)</td>
+                </tr>
+                <tr>
+                    <td><strong>ติดต่อเซิร์ฟเวอร์ไม่ได้</strong></td>
+                    <td>Backend Down</td>
+                    <td>ตรวจสอบสถานะ Docker Container บนเซิร์ฟเวอร์</td>
+                </tr>
+                <tr>
+                    <td><strong>ไม่ได้รับอีเมลยืนยัน</strong></td>
+                    <td>SMTP Config</td>
+                    <td>ตรวจสอบ SMTP Credentials ในไฟล์ .env</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div class="footer">
+            <p>KCE Electronics Public Company Limited | Admin Support: IT Department | Generated: 2026-04-01</p>
+        </div>
+    </div>
+</body>
+</html>

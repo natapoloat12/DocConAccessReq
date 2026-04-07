@@ -1,0 +1,20 @@
+# .gitignore for Firewall Access Portal
+
+# Rust
+/backend/target
+/backend/Cargo.lock
+**/*.rs.bk
+
+# Environment & Secrets
+.env
+.env.local
+
+# Docker
+.docker
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
