@@ -41,6 +41,7 @@ impl FortiGateClient {
         let client = Client::builder()
             .danger_accept_invalid_certs(!verify_ssl)
             .use_rustls_tls()
+            .timeout(std::time::Duration::from_secs(10))
             .build()
             .expect("Failed to create HTTP client");
 
@@ -94,10 +95,10 @@ impl FortiGateClient {
 
         let mut groups = Vec::new();
         if !engineer_addrs.is_empty() {
-            groups.push((format!("E2S-Doc-{}", date_str), "Engineer_Zone", 261, engineer_addrs));
+            groups.push((format!("AUTO-E2S-Doc-{}", date_str), "Engineer_Zone", 261, engineer_addrs));
         }
         if !default_addrs.is_empty() {
-            groups.push((format!("T2S-Doc-{}", date_str), "Trust_Zone", 285, default_addrs));
+            groups.push((format!("AUTO-T2S-Doc-{}", date_str), "Trust_Zone", 285, default_addrs));
         }
 
         for (policy_name, src_intf, move_before, addr_names) in groups {
@@ -537,5 +538,37 @@ impl FortiGateClient {
             warn!("Policy move failed or restricted: {}", response.status());
         }
         Ok(())
+    }
+
+    pub async fn list_all_policies(&self) -> Result<Vec<Value>, String> {
+        let url = format!("{}/api/v2/cmdb/firewall/policy", self.base_url);
+        let response = self.client.get(&url)
+            .bearer_auth(&self.api_token)
+            .send()
+            .await
+            .map_err(|e| format!("Failed to fetch policies: {}", e))?;
+
+        if response.status().is_success() {
+            let json: Value = response.json().await.map_err(|e| e.to_string())?;
+            Ok(json["results"].as_array().cloned().unwrap_or_default())
+        } else {
+            Err(format!("Failed to list policies: {}", response.status()))
+        }
+    }
+
+    pub async fn delete_policy(&self, policy_id: i64) -> Result<(), String> {
+        let url = format!("{}/api/v2/cmdb/firewall/policy/{}", self.base_url, policy_id);
+        let response = self.client.delete(&url)
+            .bearer_auth(&self.api_token)
+            .send()
+            .await
+            .map_err(|e| format!("Failed to delete policy: {}", e))?;
+
+        if response.status().is_success() {
+            Ok(())
+        } else {
+            let err_text = response.text().await.unwrap_or_default();
+            Err(format!("Failed to delete policy {}: {}", policy_id, err_text))
+        }
     }
 }

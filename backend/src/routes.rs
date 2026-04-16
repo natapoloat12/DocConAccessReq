@@ -3,7 +3,7 @@ use axum::{
     Router,
     middleware,
 };
-use crate::handlers::handle_firewall_request;
+use crate::handlers::{handle_firewall_request, cleanup_expired_handler};
 use crate::auth::{login_handler, logout_handler, verify_handler, LoginRateLimiter};
 use crate::middleware::auth_middleware;
 use crate::fortigate::FortiGateClient;
@@ -26,6 +26,7 @@ pub fn create_router(state: AppState) -> Router {
     Router::new()
         .route("/api/login", post(login_handler))
         .route("/api/logout", post(logout_handler))
+        .route("/api/cleanup-expired", get(cleanup_expired_handler))
         .merge(protected_routes)
         .with_state(state)
 }

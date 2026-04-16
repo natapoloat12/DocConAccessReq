@@ -10,6 +10,8 @@ services:
       - PORT=5050
       - COOKIE_SECURE=false
       - ALLOWED_ORIGIN=http://localhost:5050
+      - CLEANUP_API_KEY=test-key-123
+      - CLEANUP_GRACE_DAYS=2
     # No public port exposure for backend when using NPM
     # But mapped to 127.0.0.1:5051 for internal testing if needed
     ports:

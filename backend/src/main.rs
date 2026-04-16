@@ -26,7 +26,12 @@ async fn main() {
     // 2. Load Environment Variables
     dotenv().ok();
     
-    // 3. Initialize Shared State
+    // 3. Validate Mandatory Configuration
+    let _ = env::var("JWT_SECRET").expect("CRITICAL: JWT_SECRET must be set for session security");
+    let _ = env::var("FORTIGATE_BASE_URL").expect("CRITICAL: FORTIGATE_BASE_URL must be set");
+    let _ = env::var("FORTIGATE_API_TOKEN").expect("CRITICAL: FORTIGATE_API_TOKEN must be set");
+    
+    // 4. Initialize Shared State
     let state = AppState {
         fortigate: Arc::new(FortiGateClient::new()),
         limiter: Arc::new(LoginRateLimiter::new()),

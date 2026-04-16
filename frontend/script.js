@@ -252,7 +252,7 @@ if (logoutBtn) {
 
 // --- Inactivity Timeout ---
 let inactivityTimer;
-const INACTIVITY_LIMIT_MS = 15 * 60 * 1000; // 15 minutes
+const INACTIVITY_LIMIT_MS = 5 * 60 * 1000; // 5 minutes
 
 async function logoutDueToInactivity() {
     try {
@@ -260,7 +260,7 @@ async function logoutDueToInactivity() {
     } catch (e) {
         console.error("Auto-logout due to inactivity failed", e);
     } finally {
-        alert("Your session has expired due to 15 minutes of inactivity. Please log in again.");
+        alert("Your session has expired due to 5 minutes of inactivity. Please log in again.");
         window.location.href = '/login.html';
     }
 }

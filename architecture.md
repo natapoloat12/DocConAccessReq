@@ -39,14 +39,15 @@ graph LR
 - **Framework:** [Axum](https://github.com/tokio-rs/axum) (Rust) running on the [Tokio](https://tokio.rs/) runtime.
 - **Core Modules:**
     - `auth.rs`: Handles LDAP binding and JWT generation.
-    - `fortigate.rs`: The "Orchestrator" that translates business logic into FortiGate API calls and manages multi-recipient email notifications.
-    - `handlers.rs`: Manages HTTP request/response cycles, input validation, and legacy field compatibility.
+    - `fortigate.rs`: The "Orchestrator" that translates business logic into FortiGate API calls, manages multi-recipient email notifications, and handles policy deletion.
+    - `handlers.rs`: Manages HTTP request/response cycles, input validation, legacy field compatibility, and the automated cleanup endpoint.
     - `models.rs`: Defines data structures for firewall requests, including support for multiple IP entries and CC email lists.
     - `middleware.rs`: Intercepts every request to verify the JWT in the cookie.
 
 ### C. Infrastructure (Deployment Layer)
 - **Docker Compose:** Orchestrates two containers: `backend` and `frontend`.
 - **Nginx:** Functions as a **Reverse Proxy**. It serves static files for the frontend and routes all traffic starting with `/api/` to the Rust backend on port 5050.
+- **Automated Cleanup (Cron):** An external cron job triggers the cleanup service via the API at regular intervals.
 
 ---
 
@@ -59,7 +60,7 @@ When a user submits a request, the following sequence occurs:
 3.  **FortiGate Orchestration (The "Triple Check"):**
     - **Step 1 (Address):** Checks if an address object for the IP exists. If not, it creates `ADDR_1.2.3.4`.
     - **Step 2 (Schedule):** Checks if a one-time schedule for the requested date exists (e.g., `20260401`). If not, it creates it.
-    - **Step 3 (Policy):** It looks for a policy named `T2S-Doc-[Date]`. 
+    - **Step 3 (Policy):** It looks for a policy named `AUTO-T2S-Doc-[Date]` or `AUTO-E2S-Doc-[Date]`. 
         - If it exists, it **appends** the new IP to the `srcaddr` list.
         - If not, it creates a **new policy** and uses `move` to place it before **Rule ID 285** (ensuring it bypasses the "Block All" rule).
 4.  **Notification:** Once the firewall confirms success, the backend sends a multi-recipient email via SMTP:
@@ -70,12 +71,37 @@ When a user submits a request, the following sequence occurs:
 
 ---
 
-## 4. Security Implementation
+## 4. Automated Policy Cleanup
+
+To prevent firewall policy bloat, the system includes a specialized cleanup service.
+
+### API Endpoint: `GET /api/cleanup-expired`
+This endpoint is designed to be called by an external cron job or monitoring system.
+
+### Workflow:
+1.  **Authentication:** Requires the `X-API-KEY` header matching the server's `CLEANUP_API_KEY`.
+2.  **Discovery:** Fetches all firewall policies from the FortiGate API.
+3.  **Filtering:** Only processes policies matching the strict naming convention: `^AUTO-(?:T2S|E2S)-Doc-(\d{8})$`.
+4.  **Expiration Logic:** 
+    - Extracts the `YYYYMMDD` date from the policy name.
+    - Calculates the expiry date as `Policy Date + CLEANUP_GRACE_DAYS` (default 2 days).
+    - If `Current Date > Expiry Date`, the policy is deleted via the FortiGate API.
+5.  **Safety Guards:** 
+    - Strict regex matching prevents accidental deletion of manually created policies.
+    - Name length verification (exactly 21 characters).
+    - `dry_run=true` query parameter for safe testing.
+
+---
+
+## 5. Security Implementation
 
 ### Identity & Session
 - **LDAP Binding:** No passwords are saved. The app performs a "Simple Bind" against your LDAP/AD. If successful, it discards the password and issues a JWT.
 - **JWT (JSON Web Token):** Encrypted with a `JWT_SECRET`. Contains user info (email, name) and an 8-hour expiration.
 - **HTTP-Only Cookies:** The JWT is stored in a cookie that cannot be accessed by JavaScript (XSS Protection).
+
+### API Security
+- **Cleanup API Key:** The automated cleanup endpoint is protected by a dedicated `CLEANUP_API_KEY` to prevent unauthorized triggers.
 
 ### Network Security
 - **Rate Limiting:** The `LoginRateLimiter` prevents brute-force attacks by limiting login attempts to 5 per 15 minutes per username.
@@ -84,7 +110,7 @@ When a user submits a request, the following sequence occurs:
 
 ---
 
-## 5. Technical Decisions & Trade-offs
+## 6. Technical Decisions & Trade-offs
 
 | Decision | Reason |
 | :--- | :--- |
@@ -92,16 +118,19 @@ When a user submits a request, the following sequence occurs:
 | **Statelessness** | By not having a database, the app is highly portable and never goes "out of sync" with the firewall. If a rule is deleted manually on the firewall, the app detects it on the next run. |
 | **Nginx Proxy** | Decoupling the frontend from the backend allows for easy scaling and simplifies the handling of static assets and API routing. |
 | **Rule ID 285** | Hardcoding the insertion point ensures that automated rules never interfere with critical system-wide "Top" rules or get "shadowed" by "Bottom" block rules. |
+| **"AUTO-" Prefix** | Explicitly marking automated policies ensures the cleanup service never touches production-critical or manually managed firewall rules. |
 
 ---
 
-## 6. Environment Configuration
+## 7. Environment Configuration
 
-The architecture is controlled by the `.env` file:
+The architecture is controlled by the `.env` file and `docker-compose.yml`:
 - `FORTIGATE_BASE_URL`: API Endpoint for the firewall.
 - `COOKIE_SECURE`: Toggle for HTTP vs HTTPS environments.
 - `PORT`: The internal binding port (5050).
 - `JWT_SECRET`: The key used to sign session tokens.
+- `CLEANUP_API_KEY`: The secure key required to trigger automated cleanup.
+- `CLEANUP_GRACE_DAYS`: Number of days to keep policies after their requested date (default: 2).
 - `SMTP_FROM`: The official sender email address.
 - `SMTP_TO`: Global administrative recipients (comma-separated).
 - `SMTP_CC`: Global CC recipients for all notifications (comma-separated).
