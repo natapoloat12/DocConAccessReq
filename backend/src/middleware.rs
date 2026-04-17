@@ -12,9 +12,13 @@ pub async fn auth_middleware(
     mut request: Request,
     next: Next,
 ) -> Result<Response, StatusCode> {
-    let path = request.uri().path().to_string();
-    tracing::info!(">>> AUTH_MIDDLEWARE: Intercepted request for path: {}", path);
+    let path = request.uri().path();
     
+    // Explicit bypass for automated cleanup endpoint
+    if path == "/api/cleanup-expired" {
+        return Ok(next.run(request).await);
+    }
+
     let cookie = jar.get(AUTH_COOKIE_NAME);
     if cookie.is_none() {
         tracing::warn!(">>> AUTH_MIDDLEWARE: No cookie found for path: {}", path);

@@ -17,16 +17,19 @@ pub struct AppState {
 
 pub fn create_router(state: AppState) -> Router {
     // 1. Protected Routes
-    let protected_routes = Router::new()
-        .route("/api/firewall/request", post(handle_firewall_request))
-        .route("/api/verify", get(verify_handler))
+    let protected_api = Router::new()
+        .route("/firewall/request", post(handle_firewall_request))
+        .route("/verify", get(verify_handler))
         .layer(middleware::from_fn(auth_middleware));
 
-    // 2. Public Routes
+    // 2. Public API Routes
+    let public_api = Router::new()
+        .route("/login", post(login_handler))
+        .route("/logout", post(logout_handler))
+        .route("/cleanup-expired", get(cleanup_expired_handler));
+
+    // 3. Main Router (All prefixed with /api)
     Router::new()
-        .route("/api/login", post(login_handler))
-        .route("/api/logout", post(logout_handler))
-        .route("/api/cleanup-expired", get(cleanup_expired_handler))
-        .merge(protected_routes)
+        .nest("/api", public_api.merge(protected_api))
         .with_state(state)
 }
