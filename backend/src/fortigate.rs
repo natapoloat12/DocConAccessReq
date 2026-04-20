@@ -346,66 +346,98 @@ impl FortiGateClient {
     }
 
     async fn ensure_address_object_v2(&self, name: &str, ip: &str) -> Result<String, String> {
+        let mut retries = 3;
+        
         // First check by name if it exists
-        let name_url = format!("{}/api/v2/cmdb/firewall/address/{}", self.base_url, url_escape::encode_component(name));
-        let res_name = self.client.get(&name_url)
-            .bearer_auth(&self.api_token)
-            .send()
-            .await;
+        loop {
+            let name_url = format!("{}/api/v2/cmdb/firewall/address/{}", self.base_url, url_escape::encode_component(name));
+            let res_name = self.client.get(&name_url)
+                .bearer_auth(&self.api_token)
+                .send()
+                .await;
 
-        if let Ok(response) = res_name {
-            if response.status().is_success() {
-                info!("Found existing address object by name: {}", name);
-                return Ok(name.to_string());
+            if let Ok(response) = res_name {
+                if response.status().as_u16() == 429 && retries > 0 {
+                    retries -= 1;
+                    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                    continue;
+                }
+                if response.status().is_success() {
+                    info!("Found existing address object by name: {}", name);
+                    return Ok(name.to_string());
+                }
             }
+            break;
         }
 
         // If not found by name, check by IP (legacy behavior)
-        let filter = format!("subnet=={} 255.255.255.255", ip);
-        let search_url = format!("{}/api/v2/cmdb/firewall/address?filter={}", self.base_url, url_escape::encode_component(&filter));
-        
-        let res_ip = self.client.get(&search_url)
-            .bearer_auth(&self.api_token)
-            .send()
-            .await
-            .map_err(|e| format!("Search address object failed: {}", e))?;
+        retries = 3;
+        loop {
+            let filter = format!("subnet=={} 255.255.255.255", ip);
+            let search_url = format!("{}/api/v2/cmdb/firewall/address?filter={}", self.base_url, url_escape::encode_component(&filter));
+            
+            let res_ip = self.client.get(&search_url)
+                .bearer_auth(&self.api_token)
+                .send()
+                .await;
 
-        if res_ip.status().is_success() {
-            let json: Value = res_ip.json().await.map_err(|e| format!("Failed to parse search results: {}", e))?;
-            if let Some(results) = json["results"].as_array() {
-                if !results.is_empty() {
-                    let existing_name = results[0]["name"].as_str().ok_or("Missing address name")?;
-                    info!("Found existing address object '{}' for IP {}", existing_name, ip);
-                    return Ok(existing_name.to_string());
+            if let Ok(response) = res_ip {
+                if response.status().as_u16() == 429 && retries > 0 {
+                    retries -= 1;
+                    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                    continue;
                 }
+                if response.status().is_success() {
+                    let json: Value = response.json().await.map_err(|e| format!("Failed to parse search results: {}", e))?;
+                    if let Some(results) = json["results"].as_array() {
+                        if !results.is_empty() {
+                            let existing_name = results[0]["name"].as_str().ok_or("Missing address name")?;
+                            info!("Found existing address object '{}' for IP {}", existing_name, ip);
+                            return Ok(existing_name.to_string());
+                        }
+                    }
+                }
+            } else if let Err(e) = res_ip {
+                return Err(format!("Search address object failed: {}", e));
             }
+            break;
         }
 
         // Not found by name or IP, create new one with provided name
-        let create_url = format!("{}/api/v2/cmdb/firewall/address", self.base_url);
-        let payload = json!({
-            "name": name,
-            "type": "ipmask",
-            "subnet": format!("{}/32", ip),
-            "comment": "Created via Self-Service Portal",
-            "color" : "18"
-        });
+        retries = 3;
+        loop {
+            let create_url = format!("{}/api/v2/cmdb/firewall/address", self.base_url);
+            let payload = json!({
+                "name": name,
+                "type": "ipmask",
+                "subnet": format!("{}/32", ip),
+                "comment": "Created via Self-Service Portal",
+                "color" : "18"
+            });
 
-        let response = self.client.post(&create_url)
-            .bearer_auth(&self.api_token)
-            .json(&payload)
-            .send()
-            .await
-            .map_err(|e| format!("Failed to create address: {}", e))?;
+            let response = self.client.post(&create_url)
+                .bearer_auth(&self.api_token)
+                .json(&payload)
+                .send()
+                .await
+                .map_err(|e| format!("Failed to create address: {}", e))?;
 
-        if !response.status().is_success() {
-            let status = response.status();
-            let err_text = response.text().await.unwrap_or_default();
-            if err_text.contains("already exists") || status.as_u16() == 424 {
-                info!("Address object {} likely created in parallel", name);
-                return Ok(name.to_string());
+            if response.status().as_u16() == 429 && retries > 0 {
+                retries -= 1;
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                continue;
             }
-            return Err(format!("FortiGate Error (Address): {}", err_text));
+
+            if !response.status().is_success() {
+                let status = response.status();
+                let err_text = response.text().await.unwrap_or_default();
+                if err_text.contains("already exists") || status.as_u16() == 424 {
+                    info!("Address object {} likely created in parallel", name);
+                    return Ok(name.to_string());
+                }
+                return Err(format!("FortiGate Error (Address): {}", err_text));
+            }
+            break;
         }
         Ok(name.to_string())
     }
